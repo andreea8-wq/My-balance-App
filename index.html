@@ -240,13 +240,23 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
 
 /* categorii manager */
 .cat-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);}
-.cat-row .cdot{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+.cat-row .cdot{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;border:1.5px dashed transparent;cursor:pointer;padding:0;}
+.cat-row .cdot:active{border-color:var(--pink);}
+.cat-arrows{display:flex;flex-direction:column;gap:2px;flex:none;}
+.carr{border:none;background:var(--pink-bg);color:var(--pink-deep);width:26px;height:18px;border-radius:6px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.carr:disabled{opacity:.3;}
+.emoji-input{width:38px;height:38px;border:1.5px solid var(--pink);border-radius:11px;text-align:center;font-size:18px;flex:none;}
+.emoji-input:focus{outline:none;}
+.emoji-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.emoji-custom{width:48px;height:48px;border:1.5px solid var(--pink);border-radius:14px;text-align:center;font-size:22px;flex:none;background:var(--card);}
+.emoji-custom:focus{outline:none;}
+.emoji-hint{font-size:11px;color:var(--ink-soft);font-weight:700;margin-top:6px;}
 .cat-row .cname{flex:1;font-weight:700;font-size:14.5px;}
 .cat-row .cbud{font-family:'Quicksand';font-weight:700;font-size:13px;color:var(--ink-soft);}
 .cat-row .crm{border:none;background:transparent;color:var(--pink);font-size:18px;cursor:pointer;padding:4px 8px;}
 .add-cat-grid{display:grid;grid-template-columns:1.4fr 1fr auto;gap:8px;align-items:end;margin-top:8px;}
 .mini-btn{border:none;background:var(--pink);color:#fff;border-radius:14px;padding:13px 16px;font-family:'Quicksand';font-weight:700;font-size:14px;cursor:pointer;height:48px;}
-.emoji-pick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.emoji-pick{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
 .emoji-pick button{width:40px;height:40px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:18px;cursor:pointer;}
 .emoji-pick button.on{border-color:var(--pink);background:var(--pink-bg);}
 
@@ -330,7 +340,7 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
       <div class="section-title"><span class="star">✦</span> Budgets</div>
       <button class="link-btn" id="manageCatBtn">Manage</button>
     </div>
-    <div class="hint">Tap any amount to change it.</div>
+    <div class="hint">Monthly targets · tap any amount to change it.</div>
     <div id="budgets"></div>
   </div>
 
@@ -391,7 +401,11 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
     <h2>✦ My categories</h2>
     <div id="catList"></div>
     <div style="margin-top:18px;font-weight:700;font-size:14px;color:var(--ink-soft);">Add a new category</div>
-    <div class="emoji-pick" id="emojiPick"></div>
+    <div class="emoji-row">
+      <input class="emoji-custom" id="newCatEmoji" maxlength="4" placeholder="🙂">
+      <div class="emoji-pick" id="emojiPick"></div>
+    </div>
+    <div class="emoji-hint">Tap a suggestion or type any emoji in the box.</div>
     <div class="add-cat-grid">
       <div class="field" style="margin:0;">
         <label>Name</label>
@@ -444,7 +458,9 @@ const EMOJIS = ['💅','💄','🎀','🍓','🛍️','🌸','💖','🧾','🚗
 let categories = load(LS.cat) || DEFAULT_CATS.slice();
 let transactions = load(LS.tx) || [];
 let currency = localStorage.getItem(LS.cur) || 'RON';
-let settings = load(LS.set) || { monthlyBudget: 0 };
+let settings = load(LS.set) || { monthlyBudget: 0, weeklyBudget: 0 };
+if(typeof settings.weeklyBudget==='undefined') settings.weeklyBudget=0;
+if(typeof settings.monthlyBudget==='undefined') settings.monthlyBudget=0;
 
 /* migrare: împrospătează culorile categoriilor implicite la noua paletă pastel
    (păstrează bugetele/numele editate de utilizator) */
@@ -524,30 +540,40 @@ function periodLabel(){
   }
 }
 
-/* tranzacțiile vizibile în perioada curentă.
-   Recurentele se „proiectează” în fiecare lună/săptămână de la data creării încoace. */
+/* Generează aparițiile unei plăți recurente în interval [s,e].
+   Recurența e lunară, în aceeași zi din lună ca plata inițială
+   (dacă luna nu are ziua, se folosește ultima zi a lunii). */
+function occurrencesInRange(t, s, e){
+  const orig = new Date(t.date); orig.setHours(0,0,0,0);
+  if(orig > e) return [];
+  const day = orig.getDate();
+  const occ = [];
+  let y = orig.getFullYear(), m = orig.getMonth(), guard = 0;
+  while(guard++ < 1200){
+    const lastDay = new Date(y, m+1, 0).getDate();
+    const d = new Date(y, m, Math.min(day, lastDay)); d.setHours(0,0,0,0);
+    if(d > e) break;
+    if(d >= s && d >= orig) occ.push(d);
+    m++; if(m>11){ m=0; y++; }
+  }
+  return occ;
+}
+
+/* tranzacțiile vizibile în perioada curentă */
 function visibleTx(){
   const [s,e] = currentRange();
   const out = [];
   transactions.forEach(t=>{
-    const td = new Date(t.date);
     if(t.recurring){
-      // apare în orice perioadă de după prima înregistrare
-      if(td <= e){
-        out.push(Object.assign({}, t, {_recurringHere:true, _displayDate: projectDate(td, s, e)}));
-      }
+      occurrencesInRange(t, s, e).forEach(d=>{
+        out.push(Object.assign({}, t, {_displayDate: d}));
+      });
     }else{
+      const td = new Date(t.date);
       if(td>=s && td<=e) out.push(Object.assign({}, t, {_displayDate: td}));
     }
   });
   return out.sort((a,b)=> b._displayDate - a._displayDate);
-}
-function projectDate(orig, s, e){
-  // pentru afișare punem aceeași zi din lună, încadrată în perioadă
-  if(orig>=s && orig<=e) return orig;
-  const d = new Date(s);
-  d.setDate(Math.min(orig.getDate(), e.getDate()));
-  return d;
 }
 
 /* ---------- randare ---------- */
@@ -572,8 +598,10 @@ function render(){
   cv.className = 'cashflow-value '+(flow>=0?'pos':'neg');
 
   renderDonut(byCat, exp);
-  renderMonthly();
-  renderBudgets(byCat);
+  renderBudgetCard();
+  // bugetele pe categorii rămân mereu lunare (luna care conține perioada vizibilă)
+  const monthByCat = spentByCatInRange(startOfMonth(anchor), endOfMonth(anchor));
+  renderBudgets(monthByCat);
   renderTxList(tx);
 }
 
@@ -656,33 +684,47 @@ function renderBudgets(byCat){
   });
 }
 
-/* buget lunar total */
+/* total cheltuieli într-un interval (cu recurențe lunare) */
 function expensesInRange(s,e){
   let exp=0;
   transactions.forEach(t=>{
     if(t.type!=='expense') return;
-    const td=new Date(t.date);
-    if(t.recurring){ if(td<=e) exp+=t.amount; }
-    else if(td>=s && td<=e) exp+=t.amount;
+    if(t.recurring){ exp += occurrencesInRange(t,s,e).length * t.amount; }
+    else { const td=new Date(t.date); if(td>=s && td<=e) exp+=t.amount; }
   });
   return exp;
 }
-function renderMonthly(){
-  const ms=startOfMonth(anchor), me=endOfMonth(anchor);
-  const spent=expensesInRange(ms,me);
-  const b=settings.monthlyBudget||0;
+/* cheltuieli pe categorie într-un interval */
+function spentByCatInRange(s,e){
+  const by={};
+  transactions.forEach(t=>{
+    if(t.type!=='expense') return;
+    let n=0;
+    if(t.recurring) n=occurrencesInRange(t,s,e).length;
+    else { const td=new Date(t.date); if(td>=s && td<=e) n=1; }
+    if(n>0) by[t.category]=(by[t.category]||0)+t.amount*n;
+  });
+  return by;
+}
+function renderBudgetCard(){
+  const isWeek = period==='week';
+  const [s,e] = currentRange();
+  const spent = expensesInRange(s,e);
+  const b = isWeek ? (settings.weeklyBudget||0) : (settings.monthlyBudget||0);
+  const word = isWeek ? 'week' : 'month';
+  const title = isWeek ? 'Weekly budget' : 'Monthly budget';
   let pct=b>0?spent/b*100:0; const over=pct>100;
   const barColor = over?'#D286A4':(pct>80?'#E8B57F':'var(--mint)');
   let leftHtml;
-  if(b<=0){ leftHtml='Tap “Set” to choose how much you want to spend this month.'; }
+  if(b<=0){ leftHtml='Tap “Set” to choose how much you want to spend this '+word+'.'; }
   else if(over){ leftHtml='Over budget by <b>'+money(spent-b)+'</b>'; }
-  else { leftHtml='<b>'+money(b-spent)+'</b> left this month'; }
+  else { leftHtml='<b>'+money(b-spent)+'</b> left this '+word; }
 
   const card=$('monthlyCard');
   card.innerHTML=`
     <div class="monthly-top">
       <div>
-        <div class="monthly-lbl">Monthly budget</div>
+        <div class="monthly-lbl">${title}</div>
         <div class="monthly-spent">spent ${money(spent)}</div>
       </div>
       <button class="monthly-amt" id="monthlyBudgetBtn">${b>0?money(b):'Set'}</button>
@@ -690,7 +732,11 @@ function renderMonthly(){
     <div class="bar"><span style="width:${b>0?Math.min(pct,100):0}%;background:${barColor}"></span></div>
     <div class="monthly-left">${leftHtml}</div>`;
   $('monthlyBudgetBtn').onclick=()=>{
-    inlineEditNumber($('monthlyBudgetBtn'), settings.monthlyBudget, v=>{ settings.monthlyBudget=v; save(); render(); });
+    const cur = isWeek ? settings.weeklyBudget : settings.monthlyBudget;
+    inlineEditNumber($('monthlyBudgetBtn'), cur, v=>{
+      if(isWeek) settings.weeklyBudget=v; else settings.monthlyBudget=v;
+      save(); render();
+    });
   };
 }
 
@@ -807,14 +853,46 @@ function saveTx(){
 function openCats(){ renderCatList(); buildEmojiPick(); $('catOverlay').classList.add('open'); }
 function renderCatList(){
   const wrap=$('catList'); wrap.innerHTML='';
-  categories.forEach(c=>{
+  categories.forEach((c,i)=>{
     const row=document.createElement('div'); row.className='cat-row';
-    row.innerHTML=`<div class="cdot" style="background:${hexA(c.color,.2)}">${c.icon}</div>
+    row.innerHTML=`
+      <button class="cdot" data-emoji="${c.id}" style="background:${hexA(c.color,.2)}" title="Change emoji">${c.icon}</button>
       <div class="cname">${c.name}</div>
       <div class="cbud">${c.budget>0?money(c.budget)+'/mo':'no budget'}</div>
+      <div class="cat-arrows">
+        <button class="carr" data-up="${i}" ${i===0?'disabled':''}>▲</button>
+        <button class="carr" data-down="${i}" ${i===categories.length-1?'disabled':''}>▼</button>
+      </div>
       <button class="crm" data-rm="${c.id}">🗑</button>`;
     wrap.appendChild(row);
   });
+  // schimbă emoji (orice emoji din tastatură)
+  wrap.querySelectorAll('[data-emoji]').forEach(btn=>{
+    btn.onclick=()=>{
+      const cat=catById(btn.dataset.emoji); if(!cat) return;
+      const inp=document.createElement('input');
+      inp.type='text'; inp.className='emoji-input'; inp.value=cat.icon;
+      inp.setAttribute('maxlength','4');
+      btn.parentNode.replaceChild(inp, btn);
+      inp.focus(); inp.select();
+      let done=false;
+      const finish=(commit)=>{
+        if(done) return; done=true;
+        if(commit){ const em=firstEmoji(inp.value); if(em){ cat.icon=em; save(); render(); } }
+        renderCatList();
+      };
+      inp.addEventListener('keydown',e=>{ if(e.key==='Enter')finish(true); else if(e.key==='Escape')finish(false); });
+      inp.addEventListener('blur',()=>finish(true));
+    };
+  });
+  // reordonare sus/jos
+  wrap.querySelectorAll('[data-up]').forEach(b=>{
+    b.onclick=()=>{ const i=+b.dataset.up; if(i>0){ [categories[i-1],categories[i]]=[categories[i],categories[i-1]]; save(); renderCatList(); render(); } };
+  });
+  wrap.querySelectorAll('[data-down]').forEach(b=>{
+    b.onclick=()=>{ const i=+b.dataset.down; if(i<categories.length-1){ [categories[i+1],categories[i]]=[categories[i],categories[i+1]]; save(); renderCatList(); render(); } };
+  });
+  // ștergere
   wrap.querySelectorAll('[data-rm]').forEach(b=>{
     b.onclick=()=>{
       if(categories.length<=1) return;
@@ -825,12 +903,23 @@ function renderCatList(){
     };
   });
 }
+/* extrage primul emoji/grapheme dintr-un text */
+function firstEmoji(str){
+  str=(str||'').trim();
+  if(!str) return '';
+  try{
+    if(typeof Intl!=='undefined' && Intl.Segmenter){
+      const seg=new Intl.Segmenter(); for(const s of seg.segment(str)) return s.segment;
+    }
+  }catch(e){}
+  return Array.from(str)[0]||'';
+}
 function buildEmojiPick(){
   const wrap=$('emojiPick'); wrap.innerHTML='';
-  EMOJIS.forEach((e,i)=>{
+  if($('newCatEmoji') && !$('newCatEmoji').value) $('newCatEmoji').value=newCatEmoji;
+  EMOJIS.forEach((e)=>{
     const b=document.createElement('button'); b.textContent=e;
-    if(e===newCatEmoji) b.className='on';
-    b.onclick=()=>{ newCatEmoji=e; wrap.querySelectorAll('button').forEach(x=>x.className=''); b.className='on'; };
+    b.onclick=()=>{ $('newCatEmoji').value=e; };
     wrap.appendChild(b);
   });
 }
@@ -839,9 +928,9 @@ function addCat(){
   if(!name) { $('newCatName').focus(); return; }
   const budget=parseFloat($('newCatBudget').value)||0;
   const color=PALETTE[categories.length % PALETTE.length];
-  categories.push({ id:uid(), name, budget, color, icon:newCatEmoji });
-  $('newCatName').value=''; $('newCatBudget').value='';
-  newCatEmoji=EMOJIS[0];
+  const icon=firstEmoji($('newCatEmoji').value) || '✨';
+  categories.push({ id:uid(), name, budget, color, icon });
+  $('newCatName').value=''; $('newCatBudget').value=''; $('newCatEmoji').value='';
   save(); renderCatList(); buildEmojiPick(); render();
 }
 
