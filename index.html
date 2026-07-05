@@ -246,9 +246,8 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
 .cat-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);}
 .cat-row .cdot{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;border:1.5px dashed transparent;cursor:pointer;padding:0;}
 .cat-row .cdot:active{border-color:var(--pink);}
-.cat-arrows{display:flex;flex-direction:column;gap:2px;flex:none;}
-.carr{border:none;background:var(--pink-bg);color:var(--pink-deep);width:26px;height:18px;border-radius:6px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
-.carr:disabled{opacity:.3;}
+.lgrip{color:var(--ink-soft);opacity:.5;font-size:15px;letter-spacing:-2px;flex:none;padding:0 2px;cursor:grab;touch-action:none;}
+.dragging{opacity:.95;box-shadow:0 12px 26px rgba(120,100,90,.22);z-index:20;position:relative;border-radius:16px;}
 .emoji-input{width:38px;height:38px;border:1.5px solid var(--pink);border-radius:11px;text-align:center;font-size:18px;flex:none;}
 .emoji-input:focus{outline:none;}
 .emoji-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
@@ -333,10 +332,8 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
 .list-card .lname{font-family:'Quicksand';font-weight:700;font-size:16px;}
 .list-card .lcount{font-size:12.5px;color:var(--ink-soft);font-weight:700;margin-top:1px;}
 .list-card .lchev{color:var(--pink);font-size:20px;}
-.list-arrows{display:flex;flex-direction:column;gap:2px;flex:none;}
-.list-arrows .carr{border:none;background:var(--pink-bg);color:var(--pink-deep);width:26px;height:18px;border-radius:6px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
-.list-arrows .carr:disabled{opacity:.3;}
-.list-detail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;padding-right:42px;}
+.list-arrows .dragging{opacity:.95;box-shadow:0 12px 26px rgba(120,100,90,.22);z-index:20;position:relative;border-radius:16px;}
+.list-arrows .list-detail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;padding-right:42px;}
 .list-name-edit{font-family:'Quicksand';font-weight:700;font-size:20px;color:var(--ink);border:none;border-bottom:2px dashed var(--pink);background:transparent;padding:2px 0;flex:1;min-width:0;}
 .list-name-edit:focus{outline:none;}
 #listDetailName{cursor:pointer;border-bottom:2px dashed transparent;}
@@ -393,6 +390,8 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
 .appt-row .aname{font-weight:700;font-size:15px;}
 .appt-row .anote{font-size:12.5px;color:var(--ink-soft);}
 .appt-row .arm{border:none;background:transparent;color:var(--pink-soft);font-size:18px;cursor:pointer;padding:2px 4px;}
+.appt-row .abell{border:none;background:var(--pink-bg);width:32px;height:32px;border-radius:50%;font-size:15px;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-sm);transition:transform .12s;}
+.appt-row .abell:active{transform:scale(.88);}
 .color-pick{display:flex;gap:10px;}
 .color-pick button{width:40px;height:40px;border-radius:50%;border:3px solid transparent;cursor:pointer;}
 .color-pick button.on{border-color:var(--ink-soft);}
@@ -1218,15 +1217,12 @@ function openCats(){ renderCatList(); buildEmojiPick(); $('catOverlay').classLis
 function renderCatList(){
   const wrap=$('catList'); wrap.innerHTML='';
   categories.forEach((c,i)=>{
-    const row=document.createElement('div'); row.className='cat-row';
+    const row=document.createElement('div'); row.className='cat-row'; row.dataset.sortable='1';
     row.innerHTML=`
       <button class="cdot" data-emoji="${c.id}" style="background:${hexA(c.color,.2)}" title="Change emoji">${c.icon}</button>
       <div class="cname">${c.name}</div>
       <div class="cbud">${c.budget>0?money(c.budget)+'/mo':'no budget'}</div>
-      <div class="cat-arrows">
-        <button class="carr" data-up="${i}" ${i===0?'disabled':''}>▲</button>
-        <button class="carr" data-down="${i}" ${i===categories.length-1?'disabled':''}>▼</button>
-      </div>
+      <div class="lgrip">⋮⋮</div>
       <button class="crm" data-rm="${c.id}">🗑</button>`;
     wrap.appendChild(row);
   });
@@ -1249,13 +1245,8 @@ function renderCatList(){
       inp.addEventListener('blur',()=>finish(true));
     };
   });
-  // reordonare sus/jos
-  wrap.querySelectorAll('[data-up]').forEach(b=>{
-    b.onclick=()=>{ const i=+b.dataset.up; if(i>0){ [categories[i-1],categories[i]]=[categories[i],categories[i-1]]; save(); renderCatList(); render(); } };
-  });
-  wrap.querySelectorAll('[data-down]').forEach(b=>{
-    b.onclick=()=>{ const i=+b.dataset.down; if(i<categories.length-1){ [categories[i+1],categories[i]]=[categories[i],categories[i+1]]; save(); renderCatList(); render(); } };
-  });
+  // reordonare prin drag (apăsare lungă)
+  if(window.makeSortable) window.makeSortable(wrap, categories.length, (from,to)=>{ const [m]=categories.splice(from,1); categories.splice(to,0,m); save(); renderCatList(); render(); });
   // ștergere
   wrap.querySelectorAll('[data-rm]').forEach(b=>{
     b.onclick=()=>{
@@ -1467,20 +1458,16 @@ function renderLists(){
   }
   lists.forEach((l,i)=>{
     const done=l.items.filter(it=>it.done).length;
-    const card=document.createElement('div'); card.className='list-card';
+    const card=document.createElement('div'); card.className='list-card'; card.dataset.sortable='1';
     card.innerHTML=`<div class="lic">📋</div>
       <div class="lmid"><div class="lname">${esc(l.name)}</div>
       <div class="lcount">${l.items.length} item${l.items.length!==1?'s':''}${l.items.length?` · ${done} done`:''}</div></div>
-      <div class="list-arrows">
-        <button class="carr" data-up="${i}" ${i===0?'disabled':''}>▲</button>
-        <button class="carr" data-down="${i}" ${i===lists.length-1?'disabled':''}>▼</button>
-      </div>
+      <div class="lgrip">⋮⋮</div>
       <div class="lchev">›</div>`;
-    card.querySelector('[data-up]').onclick=(e)=>{ e.stopPropagation(); if(i>0){ [lists[i-1],lists[i]]=[lists[i],lists[i-1]]; saveLists(); renderLists(); } };
-    card.querySelector('[data-down]').onclick=(e)=>{ e.stopPropagation(); if(i<lists.length-1){ [lists[i+1],lists[i]]=[lists[i],lists[i+1]]; saveLists(); renderLists(); } };
     card.onclick=()=>openList(l.id);
     wrap.appendChild(card);
   });
+  window.makeSortable(wrap, lists.length, (from,to)=>{ arrayMove(lists,from,to); saveLists(); renderLists(); });
 }
 function createList(){
   const v=$('newListName').value.trim(); if(!v){ $('newListName').focus(); return; }
@@ -1666,12 +1653,49 @@ function renderDayAppts(){
     row.innerHTML=`<div class="ad" style="background:${col}"></div>
       <div class="atime">${a.time||'—'}</div>
       <div class="amid"><div class="aname">${esc(a.title)}<span class="acat" style="background:${col}">${apptCatName(a)}</span></div>${a.note?`<div class="anote">${esc(a.note)}</div>`:''}</div>
+      <button class="abell" title="Add to iPhone Calendar">🔔</button>
       <button class="arm">×</button>`;
     row.onclick=()=>openAppt(a);
+    row.querySelector('.abell').onclick=(e)=>{ e.stopPropagation(); addToPhoneCalendar(a); };
     row.querySelector('.arm').onclick=(e)=>{ e.stopPropagation(); appts=appts.filter(x=>x.id!==a.id); saveAppts(); scheduleNotifications(); renderCalendar(); };
     list.appendChild(row);
   });
 }
+/* generează un fișier .ics și îl deschide -> iPhone îl adaugă în Calendar cu alarmă */
+function addToPhoneCalendar(a){
+  const pad=n=>String(n).padStart(2,'0');
+  const [y,m,d]=a.date.split('-').map(Number);
+  let dtstart, dtend, allday=false;
+  if(a.time){
+    const [hh,mm]=a.time.split(':').map(Number);
+    dtstart=`${y}${pad(m)}${pad(d)}T${pad(hh)}${pad(mm)}00`;
+    const end=new Date(y,m-1,d,hh,mm+60);
+    dtend=`${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
+  }else{
+    allday=true; dtstart=`${y}${pad(m)}${pad(d)}`;
+  }
+  const now=new Date();
+  const stamp=`${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  let ev='BEGIN:VEVENT\r\n'+
+    'UID:'+a.id+'@mybalance\r\n'+
+    'DTSTAMP:'+stamp+'\r\n'+
+    (allday ? 'DTSTART;VALUE=DATE:'+dtstart+'\r\n'
+            : 'DTSTART:'+dtstart+'\r\nDTEND:'+dtend+'\r\n')+
+    'SUMMARY:'+icsEsc(a.title)+'\r\n'+
+    (a.note?'DESCRIPTION:'+icsEsc(a.note)+'\r\n':'');
+  if(a.remind>0 && a.time){
+    ev+='BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:'+icsEsc(a.title)+'\r\nTRIGGER:-PT'+a.remind+'M\r\nEND:VALARM\r\n';
+  }
+  ev+='END:VEVENT\r\n';
+  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//My Balance//EN\r\nCALSCALE:GREGORIAN\r\n'+ev+'END:VCALENDAR\r\n';
+  const blob=new Blob([ics],{type:'text/calendar'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a'); link.href=url;
+  link.download=(a.title||'event').replace(/[^\w ]+/g,'').slice(0,40)+'.ics';
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function icsEsc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n'); }
 function openAppt(a){
   const editing = a && a.id;
   editingApptId = editing ? a.id : null;
@@ -1796,6 +1820,57 @@ function toast(msg){
 
 /* util */
 function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* drag-to-reorder prin apăsare lungă (funcționează pe touch/iOS) */
+window.makeSortable = function(container, count, commit){
+  const rows = Array.from(container.children).filter(el=>el.dataset.sortable==='1');
+  rows.forEach((row, index)=>{
+    let timer=null, dragging=false, startY=0, curY=0, rects=null;
+    function down(e){
+      const pt=e.touches?e.touches[0]:e; startY=pt.clientY; curY=startY;
+      timer=setTimeout(()=>begin(), 320);
+      window.addEventListener('pointermove',move,{passive:false});
+      window.addEventListener('pointerup',up);
+      window.addEventListener('touchmove',move,{passive:false});
+      window.addEventListener('touchend',up);
+    }
+    function begin(){
+      dragging=true;
+      rects=rows.map(r=>r.getBoundingClientRect());
+      row.classList.add('dragging'); document.body.style.userSelect='none';
+      if(navigator.vibrate) navigator.vibrate(10);
+    }
+    function move(e){
+      const pt=e.touches?e.touches[0]:e;
+      if(!dragging){ if(Math.abs(pt.clientY-startY)>10){ clearTimeout(timer); cleanup(); } return; }
+      e.preventDefault(); curY=pt.clientY;
+      row.style.transform='translateY('+(curY-startY)+'px) scale(1.03)';
+    }
+    function up(){
+      clearTimeout(timer);
+      if(dragging){
+        let dest=0;
+        rects.forEach((r,j)=>{ if(j!==index && (r.top+r.height/2)<curY) dest++; });
+        // swallow the click that follows the drop
+        const swallow=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); };
+        document.addEventListener('click',swallow,{capture:true,once:true});
+        setTimeout(()=>document.removeEventListener('click',swallow,{capture:true}),350);
+        cleanup();
+        if(dest!==index) commit(index,dest);
+        return;
+      }
+      cleanup();
+    }
+    function cleanup(){
+      dragging=false; row.classList.remove('dragging'); row.style.transform='';
+      document.body.style.userSelect='';
+      window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up);
+      window.removeEventListener('touchmove',move); window.removeEventListener('touchend',up);
+    }
+    row.addEventListener('pointerdown',down);
+  });
+};
+function arrayMove(arr,from,to){ const [m]=arr.splice(from,1); arr.splice(to,0,m); }
 
 /* =====================================================
    TAB ROUTER
