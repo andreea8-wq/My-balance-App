@@ -787,6 +787,10 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
       <input class="input" id="apptName" placeholder="e.g. Nails, Dentist">
     </div>
     <div class="field">
+      <label>Date</label>
+      <input class="input" id="apptDate" type="date">
+    </div>
+    <div class="field">
       <label>Time</label>
       <input class="input" id="apptTime" type="time">
     </div>
@@ -1784,6 +1788,7 @@ function openAppt(a){
   const editing = a && a.id;
   editingApptId = editing ? a.id : null;
   $('apptName').value = editing ? a.title : '';
+  $('apptDate').value = editing ? a.date : calSelected;
   $('apptTime').value = editing ? (a.time||'') : '';
   $('apptNote').value = editing ? (a.note||'') : '';
   apptCat = editing ? (a.cat || (calCats[0]||DEFAULT_CAL_CATS[0]).id) : (calCats[0]||DEFAULT_CAL_CATS[0]).id;
@@ -1791,7 +1796,7 @@ function openAppt(a){
   $('apptRemind').value = editing ? String(a.remind||0) : '0'; updateReminderHint();
   buildCatPick();
   const df=new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long'});
-  $('apptTitle').textContent=(editing?'✦ Edit · ':'✦ ')+df.format(parseKey(calSelected));
+  $('apptTitle').textContent='✦ '+df.format(parseKey(editing ? a.date : calSelected));
   $('saveApptBtn').textContent = editing ? 'Save changes' : 'Save appointment';
   $('apptOverlay').classList.add('open');
   setTimeout(()=>$('apptName').focus(),250);
@@ -1843,15 +1848,18 @@ function saveAppt(){
   if(!title){ $('apptName').focus(); $('apptName').style.borderColor='#E2685F'; return; }
   const remind=parseInt($('apptRemind').value)||0;
   const time=$('apptTime').value||'';
+  const date=$('apptDate').value||calSelected;
   if(remind>0 && !time){ alert('Add a time so the reminder knows when to alert you.'); return; }
   const note=$('apptNote').value.trim();
   if(editingApptId){
     const a=appts.find(x=>x.id===editingApptId);
-    if(a){ a.title=title; a.time=time; a.note=note; a.cat=apptCat; a.remind=remind; }
+    if(a){ a.title=title; a.date=date; a.time=time; a.note=note; a.cat=apptCat; a.remind=remind; }
   }else{
-    appts.push({ id:uid(), date:calSelected, title, time, note, cat:apptCat, remind });
+    appts.push({ id:uid(), date, title, time, note, cat:apptCat, remind });
   }
   editingApptId=null;
+  calSelected=date;                    // arată ziua unde a ajuns
+  calAnchor=parseKey(date);
   saveAppts(); $('apptName').style.borderColor='';
   if(remind>0) ensureNotifyPermission();
   scheduleNotifications();
