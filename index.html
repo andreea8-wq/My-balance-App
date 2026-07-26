@@ -452,9 +452,10 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
 .sched-row .si::placeholder{color:var(--ink-soft);opacity:.45;font-weight:600;}
 
 /* daily day-nav */
-.day-nav{display:flex;align-items:center;gap:6px;}
+.day-nav{display:flex;align-items:center;gap:6px;position:relative;}
 .day-nav button{width:30px;height:30px;border-radius:50%;border:none;background:var(--card);color:var(--pink-deep);font-size:15px;cursor:pointer;box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;}
-.day-nav-label{font-family:'Quicksand';font-weight:700;font-size:13px;color:var(--ink-soft);min-width:96px;text-align:center;}
+.day-nav-label{font-family:'Quicksand';font-weight:700;font-size:13px;color:var(--ink-soft);min-width:96px;text-align:center;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;}
+#dailyDatePick{position:absolute;left:36px;right:36px;top:0;bottom:0;width:auto;opacity:0;border:none;background:none;cursor:pointer;}
 .today-row{text-align:center;margin:2px 0 6px;min-height:20px;}
 .today-row button{border:none;background:var(--pink-bg);color:var(--pink-deep);font-family:'Quicksand';font-weight:700;font-size:12px;padding:5px 12px;border-radius:12px;cursor:pointer;}
 
@@ -623,6 +624,7 @@ h1,h2,h3,.display{font-family:'Quicksand','Nunito',sans-serif;}
     <div class="day-nav">
       <button id="dailyPrev">‹</button>
       <div class="day-nav-label" id="dailyDate">—</div>
+      <input type="date" id="dailyDatePick" aria-label="Pick a date">
       <button id="dailyNext">›</button>
     </div>
   </div>
@@ -931,6 +933,7 @@ let chart = null;
 /* form temporar */
 let formType = 'expense';
 let formRecur = false;
+let editingTxId = null;
 let newCatColor = PALETTE[0];
 let newCatEmoji = EMOJIS[0];
 
@@ -964,9 +967,12 @@ function money(n){
   }catch(e){ return (n||0).toFixed(2)+' '+currency; }
 }
 function moneyShort(n){
-  // pentru cifre mari în donut
+  // suma exactă în donut: zecimale doar dacă există
   const c = CUR[currency];
-  return new Intl.NumberFormat(c.loc,{style:'currency',currency:c.code,maximumFractionDigits:0}).format(n||0);
+  const v = n||0;
+  const hasFrac = Math.abs(v - Math.round(v)) > 0.004;
+  return new Intl.NumberFormat(c.loc,{style:'currency',currency:c.code,
+    minimumFractionDigits: hasFrac?2:0, maximumFractionDigits: hasFrac?2:0}).format(v);
 }
 
 /* ---------- perioade (săptămână luni-duminică / lună calendaristică) ---------- */
@@ -1223,15 +1229,17 @@ function renderTxList(tx){
     return;
   }
   const df = new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short'});
+  const tf = new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false});
   tx.forEach(t=>{
     const isInc = t.type==='income';
     const c = isInc ? null : catById(t.category);
     const ic = isInc ? '💰' : (c?c.icon:'💸');
     const bg = isInc ? 'var(--mint-soft)' : (c? hexA(c.color,.18):'var(--pink-soft)');
     const name = isInc ? (t.note||'Income') : (c?c.name:'Expense');
-    const sub = (t.note && !isInc ? t.note+' · ' : '') + df.format(t._displayDate);
+    const when = df.format(t._displayDate) + (t.ts ? ' · ' + tf.format(new Date(t.ts)) : '');
+    const sub = (t.note && !isInc ? t.note+' · ' : '') + when;
     const el = document.createElement('div');
-    el.className='tx';
+    el.className='tx'; el.style.cursor='pointer';
     el.innerHTML = `
       <div class="tx-ic" style="background:${bg}">${ic}</div>
       <div class="tx-mid">
@@ -1240,13 +1248,9 @@ function renderTxList(tx){
       </div>
       <div class="tx-amt ${isInc?'inc':'exp'}">${isInc?'+':'−'}${money(t.amount)}</div>
       <button class="tx-del" data-del="${t.id}">×</button>`;
+    el.onclick=()=>openTxEdit(t);
+    el.querySelector('.tx-del').onclick=(e)=>{ e.stopPropagation(); transactions=transactions.filter(x=>x.id!==t.id); save(); render(); };
     wrap.appendChild(el);
-  });
-  wrap.querySelectorAll('[data-del]').forEach(b=>{
-    b.onclick = ()=>{
-      transactions = transactions.filter(x=>x.id!==b.dataset.del);
-      save(); render();
-    };
   });
 }
 
@@ -1257,14 +1261,29 @@ function hexA(hex,a){
 
 /* ---------- modal tranzacție ---------- */
 function openTx(type){
+  editingTxId = null;
   formType = type; formRecur = false;
-  $('txTitle').textContent = type==='income' ? '✦ New income' : '✦ New expense';
   $('txAmount').value='';
   $('txNote').value='';
   $('txDate').value = toISO(new Date());
   setType(type); setRecur(false);
   fillCategorySelect();
   $('catField').style.display = type==='income' ? 'none' : 'block';
+  $('saveTxBtn').textContent='Save';
+  $('txOverlay').classList.add('open');
+  setTimeout(()=>$('txAmount').focus(),250);
+}
+function openTxEdit(t){
+  editingTxId = t.id;
+  formType = t.type; formRecur = !!t.recurring;
+  fillCategorySelect();
+  $('txAmount').value = t.amount;
+  $('txNote').value = t.note||'';
+  $('txDate').value = t.date || toISO(new Date());
+  setType(t.type); setRecur(!!t.recurring);
+  if(t.type==='expense' && t.category) $('txCategory').value = t.category;
+  $('catField').style.display = t.type==='income' ? 'none' : 'block';
+  $('saveTxBtn').textContent='Save changes';
   $('txOverlay').classList.add('open');
   setTimeout(()=>$('txAmount').focus(),250);
 }
@@ -1274,7 +1293,7 @@ function setType(t){
   $('tExpense').className='expense'+(t==='expense'?' on':'');
   $('saveTxBtn').className='save-btn '+t;
   $('catField').style.display = t==='income' ? 'none' : 'block';
-  $('txTitle').textContent = t==='income' ? '✦ New income' : '✦ New expense';
+  $('txTitle').textContent = (editingTxId? '✦ ' : '✦ New ') + (t==='income'?'income':'expense');
 }
 function setRecur(v){
   formRecur=v;
@@ -1292,16 +1311,23 @@ function toISO(d){ const x=new Date(d); return x.getFullYear()+'-'+String(x.getM
 function saveTx(){
   const amt = parseAmount($('txAmount').value);
   if(!amt || amt<=0){ $('txAmount').focus(); $('txAmount').style.borderColor='#FF5C8A'; return; }
-  const t = {
-    id: uid(),
-    type: formType,
-    amount: Math.round(amt*100)/100,
-    category: formType==='expense' ? $('txCategory').value : null,
-    note: $('txNote').value.trim(),
-    date: $('txDate').value || toISO(new Date()),
-    recurring: formRecur
-  };
-  transactions.push(t);
+  const date = $('txDate').value || toISO(new Date());
+  if(editingTxId){
+    const t = transactions.find(x=>x.id===editingTxId);
+    if(t){
+      t.type=formType; t.amount=Math.round(amt*100)/100;
+      t.category = formType==='expense' ? $('txCategory').value : null;
+      t.note=$('txNote').value.trim(); t.date=date; t.recurring=formRecur;
+    }
+  }else{
+    transactions.push({
+      id: uid(), type: formType, amount: Math.round(amt*100)/100,
+      category: formType==='expense' ? $('txCategory').value : null,
+      note: $('txNote').value.trim(), date, recurring: formRecur, ts: Date.now()
+    });
+  }
+  editingTxId = null;
+  anchor = new Date(date);        // sari pe perioada tranzacției ca s-o vezi
   save();
   $('txOverlay').classList.remove('open');
   $('txAmount').style.borderColor='';
@@ -1492,6 +1518,7 @@ function renderDaily(){
   const df=new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long'});
   const isToday = curKey()===today();
   $('dailyDate').textContent = isToday ? ('Today · '+new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short'}).format(dailyAnchor)) : df.format(dailyAnchor);
+  if($('dailyDatePick')) $('dailyDatePick').value = curKey();
   $('dailyToday').style.display = isToday ? 'none' : 'inline-block';
   $('focusBox').value=d.focus||'';
   $('notesBox').value=d.notes||'';
@@ -2125,6 +2152,7 @@ function bindHub(){
   $('dailyPrev').onclick=()=>{ dailyAnchor.setDate(dailyAnchor.getDate()-1); dailyAnchor=new Date(dailyAnchor); renderDaily(); };
   $('dailyNext').onclick=()=>{ dailyAnchor.setDate(dailyAnchor.getDate()+1); dailyAnchor=new Date(dailyAnchor); renderDaily(); };
   $('dailyToday').onclick=()=>{ dailyAnchor=new Date(); renderDaily(); };
+  $('dailyDatePick').onchange=(e)=>{ if(e.target.value){ dailyAnchor=parseKey(e.target.value); renderDaily(); } };
 
   // calendar category management
   $('manageCalCatBtn').onclick=()=>{ renderCalCatList(); buildCalCatColors(); $('calCatOverlay').classList.add('open'); };
