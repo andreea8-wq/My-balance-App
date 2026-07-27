@@ -1039,7 +1039,7 @@ function visibleTx(){
       if(td>=s && td<=e) out.push(Object.assign({}, t, {_displayDate: td}));
     }
   });
-  return out.sort((a,b)=> b._displayDate - a._displayDate);
+  return out.sort((a,b)=> (b._displayDate - a._displayDate) || ((b.ts||0) - (a.ts||0)));
 }
 
 /* ---------- randare ---------- */
@@ -1328,7 +1328,7 @@ function saveTx(){
     });
   }
   editingTxId = null;
-  anchor = new Date(date);        // sari pe perioada tranzacției ca s-o vezi
+  anchor = pd(date);              // sari pe perioada tranzacției (dată locală, fără decalaj)
   save();
   $('txOverlay').classList.remove('open');
   $('txAmount').style.borderColor='';
@@ -2187,3 +2187,4 @@ bindHub();
 </script>
 </body>
 </html>
+ss
