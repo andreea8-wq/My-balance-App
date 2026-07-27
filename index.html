@@ -976,6 +976,7 @@ function moneyShort(n){
 }
 
 /* ---------- perioade (săptămână luni-duminică / lună calendaristică) ---------- */
+function pd(s){ if(s instanceof Date) return s; const [y,m,d]=String(s).split('-').map(Number); return new Date(y,(m||1)-1,d||1); }
 function startOfWeek(d){
   const x = new Date(d); x.setHours(0,0,0,0);
   const day = (x.getDay()+6)%7;       // luni=0
@@ -1009,7 +1010,7 @@ function periodLabel(){
    Recurența e lunară, în aceeași zi din lună ca plata inițială
    (dacă luna nu are ziua, se folosește ultima zi a lunii). */
 function occurrencesInRange(t, s, e){
-  const orig = new Date(t.date); orig.setHours(0,0,0,0);
+  const orig = pd(t.date); orig.setHours(0,0,0,0);
   if(orig > e) return [];
   const day = orig.getDate();
   const occ = [];
@@ -1034,7 +1035,7 @@ function visibleTx(){
         out.push(Object.assign({}, t, {_displayDate: d}));
       });
     }else{
-      const td = new Date(t.date);
+      const td = pd(t.date);
       if(td>=s && td<=e) out.push(Object.assign({}, t, {_displayDate: td}));
     }
   });
@@ -1155,7 +1156,7 @@ function expensesInRange(s,e){
   transactions.forEach(t=>{
     if(t.type!=='expense') return;
     if(t.recurring){ exp += occurrencesInRange(t,s,e).length * t.amount; }
-    else { const td=new Date(t.date); if(td>=s && td<=e) exp+=t.amount; }
+    else { const td=pd(t.date); if(td>=s && td<=e) exp+=t.amount; }
   });
   return exp;
 }
@@ -1166,7 +1167,7 @@ function spentByCatInRange(s,e){
     if(t.type!=='expense') return;
     let n=0;
     if(t.recurring) n=occurrencesInRange(t,s,e).length;
-    else { const td=new Date(t.date); if(td>=s && td<=e) n=1; }
+    else { const td=pd(t.date); if(td>=s && td<=e) n=1; }
     if(n>0) by[t.category]=(by[t.category]||0)+t.amount*n;
   });
   return by;
@@ -2084,7 +2085,7 @@ function monthBalance(){
   const ms=new Date(now.getFullYear(),now.getMonth(),1,0,0,0,0);
   let inc=0,exp=0;
   tx.forEach(t=>{
-    const td=new Date(t.date); let n=0;
+    const td=parseKey(t.date); let n=0;
     if(t.recurring){ if(td<=me) n=1; } else { if(td>=ms&&td<=me) n=1; }
     if(n){ if(t.type==='income') inc+=t.amount; else exp+=t.amount; }
   });
